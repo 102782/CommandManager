@@ -108,9 +108,20 @@ namespace CommandManager
         public Dictionary<string, int> assign { get; private set; }
         public Regex parser { get; private set; }
 
+        public long frame { get; private set; }
+        private long oldFrame { get; set; }
+        public bool isFrameChanged { get; private set; }
+        public Func<long> frameUpdating { get; set; }
+        public Action updateStarted { get; set; }
+        public Action frameChanged { get; set; }
+        public Action updateStopped { get; set; }
+        public bool isFrameUpdating { get; private set; }
+        private Task frameUpdater;
+
         public CommandExecuter() { }
 
-        public void Initialize(Dictionary<string, int> assign)
+        public void Initialize(Dictionary<string, int> assign, 
+            Func<long> frameUpdating, Action updateStarted, Action frameChanged, Action updateStopped)
         {
             this.isKeyInputing = false;
             this.isKeyUpdated = false;
@@ -126,14 +137,58 @@ namespace CommandManager
             this.assign = assign;
             this.parser = new Regex(string.Format(@"(?<direction>[1-9]?)(?<button>[N{0}]?)\((?<frame>\d+)F,\s?(?<flag>true|false|True|False)\)", 
                 string.Join("", (this.assign.Keys.ToArray()))));
+
+            this.frameUpdating = frameUpdating;
+            this.updateStarted = updateStarted;
+            this.frameChanged = frameChanged;
+            this.updateStopped = updateStopped;
+        }
+
+        public void StartUpdate()
+        {
+            this.isFrameUpdating = true;
+            this.frameUpdater = Task.Factory.StartNew(()=>
+            {
+                this.updateStarted();
+            })
+            .ContinueWith((_) =>
+            {
+                while (this.isFrameUpdating)
+                {
+                    this.oldFrame = this.frame;
+                    this.frame = this.frameUpdating();
+                    this.isFrameChanged = (this.frame - this.oldFrame) != 0;
+
+                    if (this.isFrameChanged)
+                    {
+                        this.Update();
+                        this.frameChanged();
+                    }
+                    Thread.Sleep(0);
+                }
+            })
+            .ContinueWith((_) =>
+            {
+                this.updateStopped();
+            });
+        }
+
+        public void StopUpdate()
+        {
+            this.isFrameUpdating = false;
+            if (this.frameUpdater != null && !this.frameUpdater.IsCompleted)
+            {
+                this.frameUpdater.Wait();
+            }
         }
 
         public void Shutdown()
         {
-            if (this.keyInputer != null && this.keyInputer.IsCompleted)
+            if (this.keyInputer != null && !this.keyInputer.IsCompleted)
             {
                 this.keyInputer.Wait();
             }
+            StopUpdate();
             this.vjoy.Shutdown();
         }
 
