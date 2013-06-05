@@ -132,14 +132,13 @@ namespace CommandManager
 
         public void CreateCommands(string commandString)
         {
-            commandString.Split('>').Select((s) =>
+            commandString.Split('>').ForEach((s) =>
             {
                 if (this.parser.IsMatch(s))
                 {
                     this.commands.Enqueue(new InputCommand(this, this.commands.Count, s));
                 }
-                return s;
-            }).ToArray();
+            });
         }
 
         public void ExecuteCommandsEx()
@@ -150,7 +149,7 @@ namespace CommandManager
             })
             .ContinueWith((_) =>
             {
-                this.commands.Select((c) =>
+                this.commands.ForEach((c) =>
                 {
                     c.Execute(this);
                     if (this.isKeyUpdated)
@@ -159,8 +158,7 @@ namespace CommandManager
                         Thread.Sleep(17 * this.waitFrame);
                     }
                     this.isKeyUpdated = false;
-                    return c;
-                }).ToArray();
+                });
             })
             .ContinueWith((_) =>
             {
