@@ -11,7 +11,7 @@ namespace CommandManager
 {
     internal interface ICommand
     {
-        void Execute(CommandExecuter executer);
+        void Execute();
     }
 
     internal class Command : ICommand
@@ -20,7 +20,7 @@ namespace CommandManager
         public int id { get; set; }
         public bool flag { get; set; }
 
-        public virtual void Execute(CommandExecuter executer)
+        public virtual void Execute()
         {
             throw new NotImplementedException();
         }
@@ -28,7 +28,6 @@ namespace CommandManager
 
     internal class InputCommand : Command
     {
-        private int direction { get; set; }
         private int? button { get; set; }
         private short X { get; set; }
         private short Y { get; set; }
@@ -40,17 +39,19 @@ namespace CommandManager
             this.id = id;
             var m = this.executer.parser.Match(command);
 
-            this.direction = 0;
-            if (m.Groups["direction"].Success)
+            this.X = 0;
+            this.Y = 0;
+            if (m.Groups["direction"].Success && !string.IsNullOrEmpty(m.Groups["direction"].Value))
             {
-                this.direction = int.Parse(m.Groups["direction"].Value);
+                var direction = int.Parse(m.Groups["direction"].Value);
+                this.X = ConvertDirectionValue(((direction + 2) % 3) - 1);
+                this.Y = ConvertDirectionValue((((direction + 2) / 3) - 2) * -1);
             }
 
-            this.X = ConvertDirectionValue((this.direction % 3) - 2);
-            this.Y = ConvertDirectionValue(((this.direction + 2) / 3) - 2);
-
             this.button = null;
-            if (m.Groups["button"].Success && this.executer.assign.ContainsKey(m.Groups["button"].Value))
+            if (m.Groups["button"].Success
+                && !string.IsNullOrEmpty(m.Groups["button"].Value)
+                && this.executer.assign.ContainsKey(m.Groups["button"].Value))
             {
                 this.button = this.executer.assign[m.Groups["button"].Value];
             }
@@ -60,18 +61,24 @@ namespace CommandManager
             this.flag = bool.Parse(m.Groups["flag"].Value);
         }
 
-        override public void Execute(CommandExecuter executer)
+        public override string ToString()
         {
-            executer.flag = this.flag;
-            executer.vjoy.Reset();
+            return string.Format("({0},{1}), {2}, {3}F, {4}", 
+                this.X, this.Y, this.button, this.frame, this.flag);
+        }
+
+        override public void Execute()
+        {
+            this.executer.flag = this.flag;
+            this.executer.vjoy.Reset();
             if (this.button != null)
             {
-                executer.vjoy.SetButton(0, this.button.Value, true);
+                this.executer.vjoy.SetButton(0, this.button.Value, true);
             }
-            executer.vjoy.SetXAxis(0, this.X);
-            executer.vjoy.SetYAxis(0, this.Y);
+            this.executer.vjoy.SetXAxis(0, this.X);
+            this.executer.vjoy.SetYAxis(0, this.Y);
             this.executer.waitFrame = this.frame;
-            executer.isKeyUpdated = true;
+            this.executer.isKeyUpdated = true;
         }
 
         private short ConvertDirectionValue(int direction)
@@ -117,7 +124,7 @@ namespace CommandManager
             this.waitFrame = 0;
             this.assign = new Dictionary<string, int>();
             this.assign = assign;
-            this.parser = new Regex(string.Format(@"(?<direction>[1-9]?)(?<button>[N{0}])\((?<frame>\d+)F,\s?(?<flag>true|false|True|False)\)", 
+            this.parser = new Regex(string.Format(@"(?<direction>[1-9]?)(?<button>[N{0}]?)\((?<frame>\d+)F,\s?(?<flag>true|false|True|False)\)", 
                 string.Join("", (this.assign.Keys.ToArray()))));
         }
 
@@ -151,7 +158,7 @@ namespace CommandManager
             {
                 this.commands.ForEach((c) =>
                 {
-                    c.Execute(this);
+                    c.Execute();
                     if (this.isKeyUpdated)
                     {
                         this.vjoy.Update(0);
@@ -166,6 +173,7 @@ namespace CommandManager
                 this.vjoy.Update(0);
                 Thread.Sleep(17);
                 this.commands.Clear();
+                this.waitFrame = 0;
                 this.isKeyInputing = false;
             });
         }
@@ -176,7 +184,7 @@ namespace CommandManager
             {
                 if (this.commands.Any())
                 {
-                    this.commands.Dequeue().Execute(this);
+                    this.commands.Dequeue().Execute();
                 }
                 else
                 {
